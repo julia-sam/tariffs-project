@@ -74,6 +74,14 @@ st.caption("Impact distribution + severity index (0=no impact … 3=high impact)
 
 df = load_data()
 
+def fix_one_label(s):
+    if "waste management and remediation services" in s:
+        return s.replace(
+            "Administrative and support, waste management and remediation services [56]",
+            "Administrative and support,<br>waste management and remediation services [56]"
+        )
+    return s
+
 # Sidebar filters
 st.sidebar.header("Filters")
 
@@ -207,6 +215,12 @@ top_n = st.slider("Top N movers", 10, 60, 25)
 top_inc = d.sort_values("delta", ascending=False).head(top_n)
 top_dec = d.sort_values("delta", ascending=True).head(top_n)
 
+top_inc = top_inc.copy()
+top_dec = top_dec.copy()
+
+top_inc["Business characteristics_display"] = top_inc["Business characteristics"].apply(fix_one_label)
+top_dec["Business characteristics_display"] = top_dec["Business characteristics"].apply(fix_one_label)
+
 c1, c2 = st.columns(2)
 with c1:
     st.markdown(f"**Largest increases ({q_to} − {q_from})**")
@@ -214,7 +228,7 @@ with c1:
     fig = px.bar(
         top_inc,
         x="delta",
-        y="Business characteristics",
+        y="Business characteristics_display",
         color="Perspective",
         orientation="h"
     )
@@ -229,9 +243,9 @@ with c1:
             xanchor="center",
             x=0.5
         ),
-        yaxis=dict(automargin=False)
+        yaxis=dict(automargin=True),
+        yaxis_title=None
     )
-
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -241,7 +255,7 @@ with c2:
     fig = px.bar(
         top_dec,
         x="delta",
-        y="Business characteristics",
+        y="Business characteristics_display",
         color="Perspective",
         orientation="h"
     )
@@ -256,9 +270,9 @@ with c2:
             xanchor="center",
             x=0.5
         ),
-        yaxis=dict(automargin=False)
+        yaxis=dict(automargin=True),
+        yaxis_title=None
     )
-
     st.plotly_chart(fig, use_container_width=True)
 st.divider()
 
