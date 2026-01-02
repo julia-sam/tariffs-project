@@ -4,11 +4,6 @@ import plotly.express as px
 
 st.set_page_config(page_title="Tariff Impact Severity (Quarter Comparison)", layout="wide")
 DATA_PATH = "data/statcan_impact_panel.parquet"
-st.caption(
-    "Note: Q2 responses largely precede clear tariff direction specification. "
-    "Directional impacts (imports vs exports) emerge in Q3–Q4 following tariff implementation."
-)
-
 
 @st.cache_data
 def load_data():
@@ -20,18 +15,36 @@ def load_data():
     df["Impact_weight"] = pd.to_numeric(df["Impact_weight"], errors="coerce")
     return df.dropna(subset=["VALUE"])
 
-def severity_index(df: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
+def severity_index(df: pd.DataFrame, group_cols: list[str], include_direction: bool = False) -> pd.DataFrame:
     x = df[df["Impact_weight"] >= 0].copy()
     if x.empty:
-        return pd.DataFrame(columns=group_cols + ["severity_index"])
+        return pd.DataFrame(columns=group_cols + (["severity_index","signed_severity_index"] if include_direction else ["severity_index"]))
 
     x["w_value"] = x["Impact_weight"] * x["VALUE"]
+
+    if include_direction:
+        def sign_of(s):
+            s = str(s).lower()
+            if "negative" in s:
+                return -1
+            if "positive" in s:
+                return 1
+            return 0
+        x["sign"] = x["Impact_level"].astype(str).apply(sign_of)
+        x["w_value_signed"] = x["Impact_weight"] * x["sign"] * x["VALUE"]
+
     g = x.groupby(group_cols, as_index=False).agg(
-        weighted_sum=("w_value","sum"),
-        value_sum=("VALUE","sum")
+        weighted_sum=("w_value", "sum"),
+        value_sum=("VALUE", "sum")
     )
     g["severity_index"] = g["weighted_sum"] / g["value_sum"].replace({0: pd.NA})
-    return g.drop(columns=["weighted_sum","value_sum"])
+
+    if include_direction:
+        g_signed = x.groupby(group_cols, as_index=False).agg(weighted_sum_signed=("w_value_signed", "sum"))
+        g = g.merge(g_signed, on=group_cols)
+        g["signed_severity_index"] = g["weighted_sum_signed"] / g["value_sum"].replace({0: pd.NA})
+        return g.drop(columns=["weighted_sum", "value_sum", "weighted_sum_signed"])
+    return g.drop(columns=["weighted_sum", "value_sum"])
 
 def quarter_sort_key(q: str) -> int:
     """Sort Q1..Q4 safely."""
@@ -69,8 +82,7 @@ def delta_between_quarters(
     piv.rename(columns={q_from: "from_value", q_to: "to_value"}, inplace=True)
     return piv
 
-st.title("Tariff Impact Severity (StatCan) — Quarter Comparison")
-st.caption("Impact distribution + severity index (0=no impact … 3=high impact) + user-selected quarter deltas.")
+# st.title("Tariff Impact Severity — Quarter Comparison")
 
 df = load_data()
 
@@ -146,7 +158,7 @@ if f.empty:
 
 
 # --- Distribution by quarter ---
-st.subheader("Impact distribution (mean VALUE) by Quarter")
+st.subheader("Impact distribution by Quarter")
 dist = f.groupby(["Quarter","Perspective","Impact_level"], as_index=False)["VALUE"].mean()
 
 IMPACT_LABEL_MAP = {
@@ -155,11 +167,13 @@ IMPACT_LABEL_MAP = {
     "Level of impact, medium impact": "Medium",
     "Level of impact, high impact": "High",
     "Level of impact, unknown": "Unknown",
-    "Level of impact, major negative impact": "Major −",
-    "Level of impact, minor negative impact": "Minor −",
-    "Level of impact, minor positive impact": "Minor +",
-    "Level of impact, major positive impact": "Major +",
+    "Level of impact, major negative impact": "Major Negative Impact",
+    "Level of impact, minor negative impact": "Minor Negative Impact",
+    "Level of impact, minor positive impact": "Minor Positive Impact",
+    "Level of impact, major positive impact": "Major Positive Impact",
 }
+
+IMPACT_ORDER = ["Major Negative Impact", "Minor Negative Impact", "No impact", "Minor Positive Impact", "Major Positive Impact"]
 
 dist["Impact"] = (
     dist["Impact_level"]
@@ -167,33 +181,58 @@ dist["Impact"] = (
     .fillna(dist["Impact_level"])
 )
 
+dist["Impact"] = pd.Categorical(dist["Impact"], categories=IMPACT_ORDER, ordered=True)
+
 fig = px.bar(
     dist,
     x="Impact",
     y="VALUE",
     color="Quarter",
     barmode="group",
-    facet_col="Perspective"
+    facet_col="Perspective",
+    category_orders={"Impact": IMPACT_ORDER}
 )
 fig.update_layout(
     height=450,
     margin=dict(l=40, r=40, t=60, b=120)
 )
 fig.update_xaxes(tickangle=-30)
-st.plotly_chart(fig, use_container_width=True)
 
+fig.update_yaxes(title_text="Share of Businesses (%)")
+fig.update_yaxes(title_text="", col=2)
+fig.update_xaxes(title_text="Perspective: Canadian tariffs on goods purchased (imports)", col=1)
+fig.update_xaxes(title_text="Perspective: U.S. tariffs on goods sold (exports)", col=2)
+
+
+fig.for_each_annotation(
+    lambda a: a.update(text=a.text.replace("Perspective=Canadian tariffs on goods purchased (imports)", ""))
+)
+fig.for_each_annotation(
+    lambda a: a.update(text=a.text.replace("Perspective=U.S. tariffs on goods sold (exports)", ""))
+)
+
+st.plotly_chart(fig, use_container_width=True)
 st.divider()
 
-# --- Severity index by quarter ---
-st.subheader("Severity index by Quarter (0–3)")
-idx_q = severity_index(f, ["Quarter","Perspective"])
-fig = px.bar(idx_q, x="Perspective", y="severity_index", color="Quarter", barmode="group")
-st.plotly_chart(fig, use_container_width=True)
+# # --- Severity index by quarter ---
+# st.subheader("Severity index by Quarter (from 0 to 3, no impact to highest impact)")
 
-st.divider()
+# idx_q = severity_index(f, ["Quarter","Perspective"])
+# fig = px.bar(idx_q, x="Perspective", y="severity_index", color="Quarter", barmode="group")
+# fig.update_layout(
+#     bargap=0.7,       
+#     bargroupgap=0.7,   
+#     margin=dict(l=40, r=40, t=80, b=80),
+# )
+# fig.update_traces(width=0.15)  
+
+# st.plotly_chart(fig, use_container_width=True)
+
+
+# st.divider()
 
 # --- Delta severity index by business characteristic (USER SELECTS) ---
-st.subheader("Q4 − Q3 delta: severity index by business characteristic")
+st.subheader("Q4 − Q3 delta: severity index by industry")
 st.caption(
     "Directional comparison shown only for Q3–Q4, when tariff direction was explicitly reported."
 )
@@ -286,6 +325,7 @@ with st.expander("Show delta table"):
 st.subheader("Data table (filtered)")
 st.dataframe(
     f[["Period","Quarter","Perspective","Business characteristics","Impact_level","Impact_weight","VALUE","UOM"]]
+    .rename(columns={"VALUE": "Number of Businesses"})
     .sort_values(["Quarter","Perspective","Business characteristics","Impact_level"]),
     use_container_width=True
 )
