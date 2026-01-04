@@ -212,11 +212,16 @@ st.divider()
 
 # --- Change since last quarter (industry level) ---
 
+# use signed severity so positive = relief, negative = pressure
 idx = severity_index(
     f,
     group_cols=["Quarter", "Perspective", "Business characteristics"],
-    include_direction=False
+    include_direction=True
 )
+
+# use the direction-aware value for further delta calculations
+# signed severity is in 'signed_severity_index' from the function
+idx["severity_index"] = idx["signed_severity_index"]
 
 delta_df = delta_between_quarters(
     idx,
@@ -240,7 +245,8 @@ if "Industry" not in delta_df.columns and "Business characteristics" in delta_df
 # Sort by magnitude of change
 delta_df = delta_df.sort_values("delta", ascending=False)
 
-st.subheader("Industry-level change in trade pressure")
+st.subheader("Industry-level change in trade pressure from Q3 to Q4")
+st.caption("Positive values indicate easing of pressure (relief) compared to Q3, negative values indicate increased pressure.")
 
 # Clean industry labels
 def short_label(text):
@@ -248,9 +254,9 @@ def short_label(text):
 
 delta_df["Industry_short"] = delta_df["Industry"].apply(short_label)
 
-# Direction label
+# Direction label: positive = Relief, negative = Pressure
 delta_df["Direction"] = delta_df["delta"].apply(
-    lambda x: "More pressure" if x > 0 else "Relief"
+    lambda x: "Relief" if x > 0 else "Pressure"
 )
 
 # Sort industries within each perspective by absolute change
@@ -276,8 +282,8 @@ fig = px.bar(
     facet_col="Perspective",
     orientation="h",
     color_discrete_map={
-        "More pressure": "#dc2626",
-        "Relief": "#16a34a",
+        "Pressure": "#d53e4f",   # pressure = red
+        "Relief": "#3288bd",     # relief = blue
     },
     hover_data={
         "Industry": True,
@@ -287,12 +293,11 @@ fig = px.bar(
     }
 )
 
-# Zero line (critical for interpretation)
-fig.add_vline(
-    x=0,
-    line_width=1,
-    line_color="black",
-    opacity=0.6
+# Axis title: left=pressure (negative), right=relief (positive)
+fig.update_xaxes(
+    title="Change in severity index (← pressure | relief →)",
+    zeroline=False,
+    showgrid=True,
 )
 
 # Axis + layout cleanup
@@ -300,12 +305,6 @@ fig.update_layout(
     height=700,
     showlegend=True,
     margin=dict(l=160, r=40, t=60, b=40),
-)
-
-fig.update_xaxes(
-    title="Change in severity index (Δ quarter-to-quarter)",
-    zeroline=False,
-    showgrid=True,
 )
 
 fig.update_yaxes(
@@ -318,8 +317,8 @@ fig.for_each_annotation(
     lambda a: a.update(
         text=a.text
         .replace("Perspective=", "")
-        .replace("Canadian tariffs on goods purchased (imports)", "Imports")
-        .replace("U.S. tariffs on goods sold (exports)", "Exports")
+        .replace("Canadian tariffs on goods purchased (imports)", "🇨🇦 Canadian tariffs on imports")
+        .replace("U.S. tariffs on goods sold (exports)", "🇺🇸 U.S. tariffs on exports")
     )
 )
 
