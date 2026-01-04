@@ -242,89 +242,85 @@ delta_df = delta_df.sort_values("delta", ascending=False)
 
 st.subheader("Industry-level change in trade pressure")
 
-# Prepare size and direction
-delta_df["size"] = delta_df["delta"].abs()
-delta_df["color"] = delta_df["delta"].apply(lambda x: "More pressure" if x > 0 else "Relief")
-
-# Initial random positions in square [0,1] x [0,1]
-np.random.seed(42)
-delta_df["x_pos"] = np.random.uniform(0, 1, size=len(delta_df))
-delta_df["y_pos"] = np.random.uniform(0, 1, size=len(delta_df))
-
-# Wrap text to fit inside bubbles (shorten labels by dropping trailing [nn] codes)
-def wrap_text(text, width=12):
-    return "<br>".join(textwrap.wrap(text, width=width))
-
+# Clean industry labels
 def short_label(text):
-    # remove trailing classification codes like " [72]" to shorten on-plot labels
     return re.sub(r"\s*\[\d+\]$", "", str(text))
 
-delta_df["text_wrapped"] = delta_df["Industry"].apply(lambda x: wrap_text(short_label(x), width=12))
+delta_df["Industry_short"] = delta_df["Industry"].apply(short_label)
 
-# --- Stronger repulsion algorithm (more iterations / padding, smaller scaled sizes) ---
-def repel(df, iterations=500, padding=0.08):
-    positions = df[["x_pos","y_pos"]].values.copy()
-    # scale sizes down so there's more room to separate labels
-    sizes = df["size"].values / df["size"].max() * 0.09
+# Direction label
+delta_df["Direction"] = delta_df["delta"].apply(
+    lambda x: "More pressure" if x > 0 else "Relief"
+)
 
-    for _ in range(iterations):
-        moved = False
-        for i in range(len(positions)):
-            for j in range(i+1, len(positions)):
-                dx = positions[j,0] - positions[i,0]
-                dy = positions[j,1] - positions[i,1]
-                dist = np.sqrt(dx**2 + dy**2)
-                min_dist = sizes[i] + sizes[j] + padding
-                if dist < min_dist:
-                    moved = True
-                    if dist == 0:
-                        dx = np.random.uniform(-0.01,0.01)
-                        dy = np.random.uniform(-0.01,0.01)
-                        dist = np.sqrt(dx**2 + dy**2)
-                    shift = (min_dist - dist)/2
-                    positions[i,0] -= shift*dx/dist
-                    positions[i,1] -= shift*dy/dist
-                    positions[j,0] += shift*dx/dist
-                    positions[j,1] += shift*dy/dist
-        positions = np.clip(positions, 0, 1)
-        if not moved:
-            break
-    df["x_pos"] = positions[:,0]
-    df["y_pos"] = positions[:,1]
-    return df
+# Sort industries within each perspective by absolute change
+delta_df["abs_delta"] = delta_df["delta"].abs()
+delta_df = delta_df.sort_values(
+    ["Perspective", "abs_delta"],
+    ascending=[True, False]
+)
 
-delta_df = repel(delta_df)
+# Make Industry a categorical to preserve sorting — use unique categories only
+unique_cats = list(pd.unique(delta_df["Industry_short"]))
+delta_df["Industry_short"] = pd.Categorical(
+    delta_df["Industry_short"],
+    categories=unique_cats,
+    ordered=True
+)
 
-# Bubble chart (smaller markers, lighter borders, smaller text)
-fig = px.scatter(
+fig = px.bar(
     delta_df,
-    x="x_pos",
-    y="y_pos",
-    size="size",
-    text="text_wrapped",
-    color="color",
-    hover_data=["Industry"],  # show full industry on hover
-    size_max=60,
-    color_discrete_map={"More pressure":"#dc2626","Relief":"#16a34a"}
+    x="delta",
+    y="Industry_short",
+    color="Direction",
+    facet_col="Perspective",
+    orientation="h",
+    color_discrete_map={
+        "More pressure": "#dc2626",
+        "Relief": "#16a34a",
+    },
+    hover_data={
+        "Industry": True,
+        "delta": ":.3f",
+        "Industry_short": False,
+        "abs_delta": False,
+    }
 )
 
-# Remove axis titles and tick labels
-fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False, title_text="")
-fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, title_text="")
-
-fig.update_traces(
-    textposition="middle center",
-    textfont=dict(size=10),
-    marker=dict(opacity=0.75, line=dict(width=0))
+# Zero line (critical for interpretation)
+fig.add_vline(
+    x=0,
+    line_width=1,
+    line_color="black",
+    opacity=0.6
 )
 
-# Optional explanatory label
-fig.add_annotation(x=0.5, y=1.05, text="Bubble size = severity; color = direction (pressure vs relief)", showarrow=False, xref="paper", yref="paper", font=dict(size=14))
-
+# Axis + layout cleanup
 fig.update_layout(
-    showlegend=True,
     height=700,
-    margin=dict(l=20,r=20,t=60,b=20)
+    showlegend=True,
+    margin=dict(l=160, r=40, t=60, b=40),
+)
+
+fig.update_xaxes(
+    title="Change in severity index (Δ quarter-to-quarter)",
+    zeroline=False,
+    showgrid=True,
+)
+
+fig.update_yaxes(
+    title="",
+    autorange="reversed",  # biggest change at top
+)
+
+# Clean facet titles
+fig.for_each_annotation(
+    lambda a: a.update(
+        text=a.text
+        .replace("Perspective=", "")
+        .replace("Canadian tariffs on goods purchased (imports)", "Imports")
+        .replace("U.S. tariffs on goods sold (exports)", "Exports")
+    )
 )
 
 st.plotly_chart(fig, use_container_width=True)
