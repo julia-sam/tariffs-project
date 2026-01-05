@@ -2,9 +2,16 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import numpy as np
-import plotly.express as px
 import textwrap
 import re
+
+FONT_SIZES = {
+    "title": 27,
+    "axis_title": 36,
+    "tick": 35,
+    "legend": 30,
+    "annotation": 34,
+}
 
 st.set_page_config(page_title="Tariff Impact Severity (Quarter Comparison)", layout="wide")
 DATA_PATH = "data/statcan_impact_panel.parquet"
@@ -189,22 +196,40 @@ fig = px.bar(
     category_orders={"Impact": IMPACT_ORDER}
 )
 fig.update_layout(
-    height=450,
-    margin=dict(l=40, r=40, t=60, b=120)
+    height=1250,
+    margin=dict(l=40, r=40, t=100, b=160),
+    font=dict(size=FONT_SIZES["tick"]),
+    legend=dict(font=dict(size=FONT_SIZES["legend"]),
+                title=dict(font=dict(size=FONT_SIZES["legend"]))),
+    bargap=0.30,       
+    bargroupgap=0.75  
 )
-fig.update_xaxes(tickangle=-30)
-
-fig.update_yaxes(title_text="Share of Businesses (%)")
+fig.update_traces(width=0.35, marker_line_width=0)  # narrow individual bars, remove border
+fig.update_xaxes(tickangle=-30, tickfont=dict(size=FONT_SIZES["tick"]), title_font=dict(size=FONT_SIZES["axis_title"]))
+fig.update_yaxes(title_text="Share of Businesses (%)", title_font=dict(size=FONT_SIZES["axis_title"]), tickfont=dict(size=FONT_SIZES["tick"]))
 fig.update_yaxes(title_text="", col=2)
-fig.update_xaxes(title_text="Perspective: Canadian tariffs on goods purchased (imports)", col=1)
-fig.update_xaxes(title_text="Perspective: U.S. tariffs on goods sold (exports)", col=2)
 
-
-fig.for_each_annotation(
-    lambda a: a.update(text=a.text.replace("Perspective=Canadian tariffs on goods purchased (imports)", ""))
+# move perspective axis titles further down so there's more space below the chart
+fig.update_xaxes(
+    title_text="Perspective: 🇨🇦 Canadian tariffs on imports",
+    col=1,
+    title_standoff=60,
+    automargin=True,
 )
+fig.update_xaxes(
+    title_text="Perspective: 🇺🇸 U.S. tariffs on exports",
+    col=2,
+    title_standoff=60,
+    automargin=True,
+)
+
+# update facet annotation text and font in one pass
 fig.for_each_annotation(
-    lambda a: a.update(text=a.text.replace("Perspective=U.S. tariffs on goods sold (exports)", ""))
+    lambda a: a.update(
+        text=a.text.replace("Perspective=Canadian tariffs on goods purchased (imports)", "")
+                  .replace("Perspective=U.S. tariffs on goods sold (exports)", ""),
+        font=dict(size=FONT_SIZES["annotation"])
+    )
 )
 
 st.plotly_chart(fig, use_container_width=True)
@@ -295,30 +320,37 @@ fig = px.bar(
 
 # Axis title: left=pressure (negative), right=relief (positive)
 fig.update_xaxes(
-    title="Change in severity index (← pressure | relief →)",
+    title="Severity (← pressure | relief →)",
     zeroline=False,
     showgrid=True,
+    title_font=dict(size=FONT_SIZES["axis_title"]),
+    tickfont=dict(size=FONT_SIZES["tick"])
 )
 
-# Axis + layout cleanup
+# Axis + layout cleanup (apply larger fonts)
 fig.update_layout(
     height=700,
     showlegend=True,
-    margin=dict(l=160, r=40, t=60, b=40),
+    margin=dict(l=40, r=40, t=100, b=40),
+    font=dict(size=FONT_SIZES["tick"]),
+    legend=dict(font=dict(size=FONT_SIZES["legend"]),
+                title=dict(font=dict(size=FONT_SIZES["legend"])))
 )
 
 fig.update_yaxes(
     title="",
     autorange="reversed",  # biggest change at top
+    tickfont=dict(size=FONT_SIZES["tick"])
 )
 
-# Clean facet titles
+# Clean facet titles and increase their font size
 fig.for_each_annotation(
     lambda a: a.update(
         text=a.text
         .replace("Perspective=", "")
         .replace("Canadian tariffs on goods purchased (imports)", "🇨🇦 Canadian tariffs on imports")
-        .replace("U.S. tariffs on goods sold (exports)", "🇺🇸 U.S. tariffs on exports")
+        .replace("U.S. tariffs on goods sold (exports)", "🇺🇸 U.S. tariffs on exports"),
+        font=dict(size=FONT_SIZES["annotation"])
     )
 )
 
