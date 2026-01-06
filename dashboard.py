@@ -280,7 +280,7 @@ def short_label(text):
 delta_df["Industry_short"] = delta_df["Industry"].apply(short_label)
 
 # Direction label: positive = Relief, negative = Pressure
-delta_df["Direction"] = delta_df["delta"].apply(
+delta_df["Severity"] = delta_df["delta"].apply(
     lambda x: "Relief" if x > 0 else "Pressure"
 )
 
@@ -303,7 +303,7 @@ fig = px.bar(
     delta_df,
     x="delta",
     y="Industry_short",
-    color="Direction",
+    color="Severity",
     facet_col="Perspective",
     orientation="h",
     color_discrete_map={
@@ -320,7 +320,7 @@ fig = px.bar(
 
 # Axis title: left=pressure (negative), right=relief (positive)
 fig.update_xaxes(
-    title="Severity (← pressure | relief →)",
+    title="← pressure | relief →",
     zeroline=False,
     showgrid=True,
     title_font=dict(size=FONT_SIZES["axis_title"]),
@@ -329,9 +329,10 @@ fig.update_xaxes(
 
 # Axis + layout cleanup (apply larger fonts)
 fig.update_layout(
-    height=700,
+    width=3000,
+    height=1000,  
     showlegend=True,
-    margin=dict(l=40, r=40, t=100, b=40),
+    margin=dict(l=40, r=40, t=100, b=160),
     font=dict(size=FONT_SIZES["tick"]),
     legend=dict(font=dict(size=FONT_SIZES["legend"]),
                 title=dict(font=dict(size=FONT_SIZES["legend"])))
@@ -348,13 +349,13 @@ fig.for_each_annotation(
     lambda a: a.update(
         text=a.text
         .replace("Perspective=", "")
-        .replace("Canadian tariffs on goods purchased (imports)", "🇨🇦 Canadian tariffs on imports")
-        .replace("U.S. tariffs on goods sold (exports)", "🇺🇸 U.S. tariffs on exports"),
+        .replace("Canadian tariffs on goods purchased (imports)", "🇨🇦 Tariffs on imports")
+        .replace("U.S. tariffs on goods sold (exports)", "🇺🇸 Tariffs on exports"),
         font=dict(size=FONT_SIZES["annotation"])
     )
 )
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=False)
 
 st.divider()
 
